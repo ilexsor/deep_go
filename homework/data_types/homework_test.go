@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"math/bits"
 	"testing"
+	"unsafe"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -32,13 +33,19 @@ type Unsigned interface {
 
 // ToLittleEndianT swap bytes using generics and bits library.
 func ToLittleEndianT[T Unsigned](val T) T {
-	switch v := any(val).(type) {
-	case uint16:
-		return any(bits.ReverseBytes16(v)).(T)
-	case uint32:
-		return any(bits.ReverseBytes32(v)).(T)
-	case uint64:
-		return any(bits.ReverseBytes64(v)).(T)
+	switch unsafe.Sizeof(val) {
+	case 2:
+		v := bits.ReverseBytes16(*(*uint16)(unsafe.Pointer(&val)))
+
+		return *(*T)(unsafe.Pointer(&v))
+	case 4:
+		v := bits.ReverseBytes32(*(*uint32)(unsafe.Pointer(&val)))
+
+		return *(*T)(unsafe.Pointer(&v))
+	case 8:
+		v := bits.ReverseBytes64(*(*uint64)(unsafe.Pointer(&val)))
+
+		return *(*T)(unsafe.Pointer(&v))
 	}
 
 	return val
