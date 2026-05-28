@@ -2,6 +2,8 @@ package main
 
 import (
 	"reflect"
+	"runtime"
+	"sync/atomic"
 	"testing"
 	"unsafe"
 
@@ -10,28 +12,91 @@ import (
 
 type COWBuffer struct {
 	data []byte
-	refs *int
-	// need to implement
+	refs *int32
 }
 
 func NewCOWBuffer(data []byte) COWBuffer {
-	return COWBuffer{} // need to implement
+	refs := new(int32)
+	*refs = 1
+
+	buf := COWBuffer{
+		data: data,
+		refs: refs,
+	}
+
+	runtime.SetFinalizer(buf.refs, func(r *int32) {
+		for {
+			current := atomic.LoadInt32(r)
+			if current <= 0 {
+				break
+			}
+			if atomic.CompareAndSwapInt32(r, current, current-1) {
+				break
+			}
+		}
+	})
+
+	return buf
 }
 
 func (b *COWBuffer) Clone() COWBuffer {
-	return COWBuffer{} // need to implement
+	atomic.AddInt32(b.refs, 1)
+
+	return COWBuffer{
+		data: b.data,
+		refs: b.refs,
+	}
 }
 
 func (b *COWBuffer) Close() {
-	// need to implement
+	if b.refs == nil {
+		return
+	}
+
+	for {
+		current := atomic.LoadInt32(b.refs)
+		if current <= 0 {
+			break
+		}
+		if atomic.CompareAndSwapInt32(b.refs, current, current-1) {
+			break
+		}
+	}
+
+	b.data = nil
+	b.refs = nil
 }
 
 func (b *COWBuffer) Update(index int, value byte) bool {
-	return false // need to implement
+	if index < 0 || index >= len(b.data) {
+		return false
+	}
+
+	if atomic.LoadInt32(b.refs) > 1 {
+		newData := make([]byte, len(b.data))
+		copy(newData, b.data)
+
+		newRefs := new(int32)
+		*newRefs = 1
+
+		atomic.AddInt32(b.refs, -1)
+
+		b.data = newData
+		b.refs = newRefs
+	}
+
+	b.data[index] = value
+
+	return true
 }
 
 func (b *COWBuffer) String() string {
-	return "" // need to implement
+	if b.data == nil {
+		return ""
+	}
+
+	// zero-copy []byte -> string
+	return unsafe.String(unsafe.SliceData(b.data), len(b.data))
 }
 
 func TestCOWBuffer(t *testing.T) {
