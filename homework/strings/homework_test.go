@@ -2,6 +2,7 @@ package main
 
 import (
 	"reflect"
+	"runtime"
 	"testing"
 	"unsafe"
 
@@ -10,28 +11,78 @@ import (
 
 type COWBuffer struct {
 	data []byte
-	refs *int
-	// need to implement
+	refs *int32
 }
 
 func NewCOWBuffer(data []byte) COWBuffer {
-	return COWBuffer{} // need to implement
+	refs := new(int32)
+	*refs = 1
+
+	buf := COWBuffer{
+		data: data,
+		refs: refs,
+	}
+
+	runtime.SetFinalizer(&buf, func(b *COWBuffer) {
+		if *b.refs > 0 {
+			*b.refs--
+		}
+	})
+
+	return buf
 }
 
 func (b *COWBuffer) Clone() COWBuffer {
-	return COWBuffer{} // need to implement
+	*b.refs++
+
+	return COWBuffer{
+		data: b.data,
+		refs: b.refs,
+	}
 }
 
 func (b *COWBuffer) Close() {
-	// need to implement
+	if b.refs == nil {
+		return
+	}
+
+	if *b.refs > 0 {
+		*b.refs--
+	}
+
+	b.data = nil
+	b.refs = nil
 }
 
 func (b *COWBuffer) Update(index int, value byte) bool {
-	return false // need to implement
+	if index < 0 || index >= len(b.data) {
+		return false
+	}
+
+	if *b.refs > 1 {
+		newData := make([]byte, len(b.data))
+		copy(newData, b.data)
+
+		newBuf := NewCOWBuffer(newData)
+
+		*b.refs--
+
+		b.data = newBuf.data
+		b.refs = newBuf.refs
+	}
+
+	b.data[index] = value
+
+	return true
 }
 
 func (b *COWBuffer) String() string {
-	return "" // need to implement
+	if b.data == nil {
+		return ""
+	}
+
+	// zero-copy []byte -> string
+	return unsafe.String(unsafe.SliceData(b.data), len(b.data))
 }
 
 func TestCOWBuffer(t *testing.T) {
