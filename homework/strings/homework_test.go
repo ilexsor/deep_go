@@ -3,7 +3,6 @@ package main
 import (
 	"reflect"
 	"runtime"
-	"sync/atomic"
 	"testing"
 	"unsafe"
 
@@ -25,14 +24,8 @@ func NewCOWBuffer(data []byte) COWBuffer {
 	}
 
 	runtime.SetFinalizer(buf.refs, func(r *int32) {
-		for {
-			current := atomic.LoadInt32(r)
-			if current <= 0 {
-				break
-			}
-			if atomic.CompareAndSwapInt32(r, current, current-1) {
-				break
-			}
+		if *r > 0 {
+			*r--
 		}
 	})
 
@@ -40,7 +33,7 @@ func NewCOWBuffer(data []byte) COWBuffer {
 }
 
 func (b *COWBuffer) Clone() COWBuffer {
-	atomic.AddInt32(b.refs, 1)
+	*b.refs++
 
 	return COWBuffer{
 		data: b.data,
@@ -53,14 +46,8 @@ func (b *COWBuffer) Close() {
 		return
 	}
 
-	for {
-		current := atomic.LoadInt32(b.refs)
-		if current <= 0 {
-			break
-		}
-		if atomic.CompareAndSwapInt32(b.refs, current, current-1) {
-			break
-		}
+	if *b.refs > 0 {
+		*b.refs--
 	}
 
 	b.data = nil
@@ -72,17 +59,16 @@ func (b *COWBuffer) Update(index int, value byte) bool {
 		return false
 	}
 
-	if atomic.LoadInt32(b.refs) > 1 {
+	if *b.refs > 1 {
 		newData := make([]byte, len(b.data))
 		copy(newData, b.data)
 
-		newRefs := new(int32)
-		*newRefs = 1
+		newBuf := NewCOWBuffer(newData)
 
-		atomic.AddInt32(b.refs, -1)
+		*b.refs--
 
-		b.data = newData
-		b.refs = newRefs
+		b.data = newBuf.data
+		b.refs = newBuf.refs
 	}
 
 	b.data[index] = value
