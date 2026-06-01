@@ -23,9 +23,9 @@ func NewCOWBuffer(data []byte) COWBuffer {
 		refs: refs,
 	}
 
-	runtime.SetFinalizer(buf.refs, func(r *int32) {
-		if *r > 0 {
-			*r--
+	runtime.SetFinalizer(&buf, func(b *COWBuffer) {
+		if *b.refs > 0 {
+			*b.refs--
 		}
 	})
 
