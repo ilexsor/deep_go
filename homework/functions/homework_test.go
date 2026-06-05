@@ -12,7 +12,7 @@ type Number interface {
 }
 
 func Map[T Number](data []T, action func(T) T) []T {
-	if data == nil {
+	if len(data) == 0 {
 		return nil
 	}
 
@@ -25,7 +25,7 @@ func Map[T Number](data []T, action func(T) T) []T {
 }
 
 func Filter[T Number](data []T, action func(T) bool) []T {
-	if data == nil {
+	if len(data) == 0 {
 		return nil
 	}
 
