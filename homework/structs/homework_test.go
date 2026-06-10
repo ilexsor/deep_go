@@ -29,6 +29,21 @@ const (
 	BuilderGamePersonType = iota
 	BlacksmithGamePersonType
 	WarriorGamePersonType
+	clearLast10Bits         = 0xFFC00000
+	clearMiddle10Bits       = 0x003FF000
+	clearStrengthBits       = 0x0000000F
+	clearExperienceBits     = 0x000000F0
+	clearLevelBits          = 0x00000F00
+	clearFirst4Bits         = 0xF0
+	overflowProtection      = 0x3FF
+	bits4OverflowProtection = 0x0F
+	withHouseBits           = 0x04
+	withFamilyBits          = 0x08
+	withTypesBits           = 0x03
+	shift22Bits             = 22
+	shift12Bits             = 12
+	shift4Bits              = 4
+	shift8Bits              = 8
 )
 
 type GamePerson struct {
@@ -83,57 +98,57 @@ func WithMana(mana int) Option {
 		// Mana: биты 22-31 (10 бит)
 		// Очищаем последние 10 бит 0xFFC00000 в двоичном виде: 11111111110000000000000000000000 (биты 22-31)
 		// Если в маске (в числе справа) стоит 1, то в исходном числе этот бит принудительно сбрасывается в 0.
-		person.stats &^= 0xFFC00000
-		// 0x3FF = 0000 0000 0000 0000 0000 0011 1111 1111Оператор & (битовое И) работает по правилу:
+		person.stats &^= clearLast10Bits
+		// 0x3FF = 0000 0000 0000 0000 0000 0011 1111 1111 Оператор & (битовое И) работает по правилу:
 		// результат равен 1 только тогда, когда оба бита равны 1. Если один из битов 0, на выходе будет 0.
 		// mana&0x3FF это трафарет для защиты от переполнения
-		person.stats |= GamePersonStats(mana&0x3FF) << 22
+		person.stats |= GamePersonStats(mana&overflowProtection) << shift22Bits
 	}
 }
 
 func WithHealth(health int) Option {
 	return func(person *GamePerson) {
 		// Health: биты 12-21 (10 бит)
-		person.stats &^= 0x003FF000
-		person.stats |= GamePersonStats(health&0x3FF) << 12
+		person.stats &^= clearMiddle10Bits
+		person.stats |= GamePersonStats(health&overflowProtection) << shift12Bits
 	}
 }
 
 func WithRespect(respect int) Option {
 	return func(person *GamePerson) {
 		// Respect: биты 4-7 (4 бита)
-		person.socialStats &^= 0xF0
-		person.socialStats |= GamePersonSocialStats(respect&0x0F) << 4
+		person.socialStats &^= clearFirst4Bits
+		person.socialStats |= GamePersonSocialStats(respect&bits4OverflowProtection) << shift4Bits
 	}
 }
 
 func WithStrength(strength int) Option {
 	return func(person *GamePerson) {
 		// Strength: биты 0-3 (4 бита)
-		person.stats &^= 0x0000000F
-		person.stats |= GamePersonStats(strength & 0x0F)
+		person.stats &^= clearStrengthBits
+		person.stats |= GamePersonStats(strength & bits4OverflowProtection)
 	}
 }
 
 func WithExperience(experience int) Option {
 	return func(person *GamePerson) {
 		// Experience: биты 4-7 (4 бита)
-		person.stats &^= 0x000000F0
-		person.stats |= GamePersonStats(experience&0x0F) << 4
+		person.stats &^= clearExperienceBits
+		person.stats |= GamePersonStats(experience&bits4OverflowProtection) << shift4Bits
 	}
 }
 
 func WithLevel(level int) Option {
 	return func(person *GamePerson) {
 		// Level: биты 8-11 (4 бита)
-		person.stats &^= 0x00000F00
-		person.stats |= GamePersonStats(level&0x0F) << 8
+		person.stats &^= clearLevelBits
+		person.stats |= GamePersonStats(level&bits4OverflowProtection) << shift8Bits
 	}
 }
 
 func WithHouse() Option {
 	return func(person *GamePerson) {
-		person.socialStats |= 0x04 // бит 2 для HasHouse
+		person.socialStats |= withHouseBits // бит 2 для HasHouse
 	}
 }
 
@@ -145,15 +160,15 @@ func WithGun() Option {
 
 func WithFamily() Option {
 	return func(person *GamePerson) {
-		person.socialStats |= 0x08 // бит 3 для HasFamily
+		person.socialStats |= withFamilyBits // бит 3 для HasFamily
 	}
 }
 
 func WithType(personType int) Option {
 	return func(person *GamePerson) {
 		// Type: биты 0-1 (2 бита)
-		person.socialStats &^= 0x03
-		person.socialStats |= GamePersonSocialStats(personType & 0x03)
+		person.socialStats &^= withTypesBits
+		person.socialStats |= GamePersonSocialStats(personType & withTypesBits)
 	}
 }
 
@@ -165,16 +180,18 @@ func (p *GamePerson) Gold() int { return int(p.gold) }
 // Обратная операция по чтению бит с 31 по 22
 // Сдвигаем все биты с 31 по 22 в начало, остальные биты зануляются
 // И для безопасности применяем маску 0x3FF на получившееся число
-func (p *GamePerson) Mana() int        { return int((p.stats >> 22) & 0x3FF) }
-func (p *GamePerson) Health() int      { return int((p.stats >> 12) & 0x3FF) }
-func (p *GamePerson) Respect() int     { return int((p.socialStats >> 4) & 0x0F) }
-func (p *GamePerson) Strength() int    { return int(p.stats & 0x0F) }
-func (p *GamePerson) Experience() int  { return int((p.stats >> 4) & 0x0F) }
-func (p *GamePerson) Level() int       { return int((p.stats >> 8) & 0x0F) }
-func (p *GamePerson) HasHouse() bool   { return p.socialStats&0x04 != 0 }
+func (p *GamePerson) Mana() int   { return int((p.stats >> shift22Bits) & overflowProtection) }
+func (p *GamePerson) Health() int { return int((p.stats >> shift12Bits) & overflowProtection) }
+func (p *GamePerson) Respect() int {
+	return int((p.socialStats >> shift4Bits) & bits4OverflowProtection)
+}
+func (p *GamePerson) Strength() int    { return int(p.stats & bits4OverflowProtection) }
+func (p *GamePerson) Experience() int  { return int((p.stats >> shift4Bits) & bits4OverflowProtection) }
+func (p *GamePerson) Level() int       { return int((p.stats >> shift8Bits) & bits4OverflowProtection) }
+func (p *GamePerson) HasHouse() bool   { return p.socialStats&withHouseBits != 0 }
 func (p *GamePerson) HasGun() bool     { return p.hasWeapon }
-func (p *GamePerson) HasFamilty() bool { return p.socialStats&0x08 != 0 }
-func (p *GamePerson) Type() int        { return int(p.socialStats & 0x03) }
+func (p *GamePerson) HasFamilty() bool { return p.socialStats&withFamilyBits != 0 }
+func (p *GamePerson) Type() int        { return int(p.socialStats & withTypesBits) }
 
 func TestGamePerson(t *testing.T) {
 	assert.LessOrEqual(t, unsafe.Sizeof(GamePerson{}), uintptr(64))
