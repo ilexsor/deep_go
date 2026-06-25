@@ -11,8 +11,45 @@ import (
 // go test -v homework_test.go
 
 func Trace(stacks [][]uintptr) []uintptr {
-	// need to implement
-	return nil
+	visited := make(map[uintptr]struct{})
+	var result []uintptr
+
+	// Сначала корни
+	for _, stack := range stacks {
+		for _, ptr := range stack {
+			if ptr == 0 {
+				continue
+			}
+
+			if _, ok := visited[ptr]; ok {
+				continue
+			}
+
+			visited[ptr] = struct{}{}
+			result = append(result, ptr)
+		}
+	}
+
+	// Затем рекурсивно расширяем список
+	for i := 0; i < len(result); i++ {
+		addr := result[i]
+
+		next := *(*uintptr)(unsafe.Pointer(addr))
+		if next == 0 {
+			continue
+		}
+
+		if _, ok := visited[next]; ok {
+			continue
+		}
+
+		visited[next] = struct{}{}
+
+		// вставка сразу после текущего элемента
+		result = append(result[:i+1], append([]uintptr{next}, result[i+1:]...)...)
+	}
+
+	return result
 }
 
 func TestTrace(t *testing.T) {
