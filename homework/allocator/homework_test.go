@@ -2,6 +2,7 @@ package main
 
 import (
 	"reflect"
+	"sort"
 	"testing"
 	"unsafe"
 
@@ -11,7 +12,33 @@ import (
 // go test -v homework_test.go
 
 func Defragment(memory []byte, pointers []unsafe.Pointer) {
-	// need to implement
+	if len(pointers) == 0 || len(memory) == 0 {
+		return
+	}
+
+	sort.Slice(pointers, func(i, j int) bool {
+		return uintptr(pointers[i]) < uintptr(pointers[j])
+	})
+
+	writeIndex := 0
+
+	for i := 0; i < len(pointers); i++ {
+		currentAddr := uintptr(pointers[i])
+
+		targetAddr := uintptr(unsafe.Pointer(&memory[writeIndex]))
+
+		if currentAddr != targetAddr {
+			val := *(*byte)(pointers[i])
+			memory[writeIndex] = val
+			pointers[i] = unsafe.Pointer(&memory[writeIndex])
+		}
+
+		writeIndex++
+	}
+
+	for i := writeIndex; i < len(memory); i++ {
+		memory[i] = 0x00
+	}
 }
 
 func TestDefragmentation(t *testing.T) {
